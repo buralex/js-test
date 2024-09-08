@@ -31,11 +31,11 @@ class CommissionCalculator {
   }
 
   calculateCashInCommission({ amount }) {
-    const fee = this.calculateFeeByPercentage(
-      amount,
-      this.feesConfig.cashIn.percents,
+    const { cashIn } = this.feesConfig;
+    return Math.min(
+      this.calculateFeeByPercentage(amount, cashIn.percents),
+      cashIn.max.amount,
     );
-    return Math.min(fee, this.feesConfig.cashIn.max.amount);
   }
 
   updateUserWeeklyTotal(userKey, amount) {
@@ -57,12 +57,7 @@ class CommissionCalculator {
     const cashOutNaturalPercent = this.feesConfig.cashOutNatural.percents;
     const weekStartISOString = getWeekStartISOString(date);
     const userKey = `${userId}_${weekStartISOString}`;
-    let currentWeeklyTotal = this.getUserWeeklyTotal(userKey);
-
-    // Initiate total weekly limit tracking
-    if (currentWeeklyTotal === undefined) {
-      currentWeeklyTotal = 0;
-    }
+    const currentWeeklyTotal = this.getUserWeeklyTotal(userKey) || 0;
 
     const newWeeklyTotal = currentWeeklyTotal + amount;
     this.updateUserWeeklyTotal(userKey, newWeeklyTotal);
@@ -84,11 +79,11 @@ class CommissionCalculator {
   }
 
   calculateCashOutCommissionJuridical({ amount }) {
-    const fee = this.calculateFeeByPercentage(
-      amount,
-      this.feesConfig.cashOutJuridical.percents,
+    const { cashOutJuridical } = this.feesConfig;
+    return Math.max(
+      this.calculateFeeByPercentage(amount, cashOutJuridical.percents),
+      cashOutJuridical.min.amount,
     );
-    return Math.max(fee, this.feesConfig.cashOutJuridical.min.amount);
   }
 
   calculateCommission(operationsData) {
