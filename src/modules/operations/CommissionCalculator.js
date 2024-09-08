@@ -7,10 +7,8 @@ class CommissionCalculator {
     this.feesConfig = feesConfig;
     this.usersWeeklyLimits = new Map(); // Track weekly limits for each user
     this.commissionFees = [];
-  }
 
-  getCommissionCalculator({ operationType, userType }) {
-    const calculators = {
+    this.calculators = {
       [operationTypes.cashIn]: this.calculateCashInCommission.bind(this),
       [operationTypes.cashOut]: {
         [userTypes.natural]: this.calculateCashOutCommissionNatural.bind(this),
@@ -18,12 +16,14 @@ class CommissionCalculator {
           this.calculateCashOutCommissionJuridical.bind(this),
       },
     };
+  }
 
+  getCommissionCalculator({ operationType, userType }) {
     if (operationType === operationTypes.cashOut) {
-      return calculators[operationType][userType];
+      return this.calculators[operationType][userType];
     }
 
-    return calculators[operationType];
+    return this.calculators[operationType];
   }
 
   calculateFeeByPercentage(amount, feePercentage) {
