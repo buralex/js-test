@@ -6,7 +6,6 @@ class CommissionCalculator {
   constructor(feesConfig) {
     this.feesConfig = feesConfig;
     this.usersWeeklyLimits = new Map(); // Track weekly limits for each user
-    this.commissionFees = [];
 
     this.calculators = {
       [operationTypes.cashIn]: this.calculateCashInCommission.bind(this),
@@ -38,44 +37,32 @@ class CommissionCalculator {
     );
   }
 
-  updateUserWeeklyTotal(userKey, amount) {
-    this.usersWeeklyLimits.set(userKey, amount);
-  }
-
-  getUserWeeklyTotal(userKey) {
-    return this.usersWeeklyLimits.get(userKey);
-  }
-
-  /**
-   * Calculates CashOut commission taking into account weekly limits.
-   */
-  calculateCashOutCommissionNatural({ amount, userId, date }) {
-    // Weekly limit tracking is implemented by keeping the weekly total amount under specific `userKey`.
-    // The tricky part is `weekStartISOString` - that represents the Monday ISO date.
+  getWeeklyUserKey(userId, date) {
+    // `weekStartISOString` - represents the Monday ISO date.
     // So the `userKey` for any day of the week - will be like `userId_MondayISOdate`.
-    const weekLimit = this.feesConfig.cashOutNatural.week_limit.amount;
-    const cashOutNaturalPercent = this.feesConfig.cashOutNatural.percents;
     const weekStartISOString = getWeekStartISOString(date);
-    const userKey = `${userId}_${weekStartISOString}`;
-    const currentWeeklyTotal = this.getUserWeeklyTotal(userKey) || 0;
+    return `${userId}_${weekStartISOString}`;
+  }
 
-    const newWeeklyTotal = currentWeeklyTotal + amount;
-    this.updateUserWeeklyTotal(userKey, newWeeklyTotal);
+  calculateCashOutCommissionNatural({ amount, userId, date }) {
+    const { cashOutNatural } = this.feesConfig;
+    // Weekly limit tracking is implemented by keeping the weekly total amount under specific `userKey`.
+    const userKey = this.getWeeklyUserKey(userId, date);
+    const currentTotal = this.usersWeeklyLimits.get(userKey) || 0;
 
-    // If previous operations already exceeded the limit, then charge for full operation amount
-    if (currentWeeklyTotal > weekLimit) {
-      return this.calculateFeeByPercentage(amount, cashOutNaturalPercent);
+    const newTotal = currentTotal + amount;
+    this.usersWeeklyLimits.set(userKey, newTotal);
+
+    if (currentTotal > cashOutNatural.week_limit.amount) {
+      return this.calculateFeeByPercentage(amount, cashOutNatural.percents);
     }
 
-    // If the weekly limit is not exceeded then commission is NOT charged
-    if (newWeeklyTotal <= weekLimit) {
-      return 0;
-    }
-
-    // If the user has exceeded the weekly limit for the first time
-    const exceededAmount = newWeeklyTotal - weekLimit;
-
-    return this.calculateFeeByPercentage(exceededAmount, cashOutNaturalPercent);
+    const remainingLimit = cashOutNatural.week_limit.amount - currentTotal;
+    const amountToCharge = Math.max(amount - remainingLimit, 0);
+    return this.calculateFeeByPercentage(
+      amountToCharge,
+      cashOutNatural.percents,
+    );
   }
 
   calculateCashOutCommissionJuridical({ amount }) {
@@ -86,34 +73,34 @@ class CommissionCalculator {
     );
   }
 
-  calculateCommission(operationsData) {
-    operationsData.forEach((item) => {
-      const {
-        date,
-        user_id: userId,
-        user_type: userType,
-        type: operationType,
-        operation: { amount, currency },
-      } = item;
+  calculateCommissionForOperation(operation) {
+    const {
+      date,
+      user_id: userId,
+      user_type: userType,
+      type: operationType,
+      operation: { amount, currency },
+    } = operation;
 
-      if (currency !== DEFAULT_CURRENCY) {
-        throw new Error('Currency not supported');
-      }
-
-      const commissionCalculator = this.getCommissionCalculator({
-        operationType,
-        userType,
-      });
-
-      if (!commissionCalculator) {
-        throw new Error('Operation type or user type not supported');
-      }
-
-      const fee = commissionCalculator({ amount, userId, date });
-      this.commissionFees.push(fee);
+    if (currency !== DEFAULT_CURRENCY) {
+      throw new Error('Currency not supported');
+    }
+    const calculator = this.getCommissionCalculator({
+      operationType,
+      userType,
     });
 
-    return this.commissionFees;
+    if (!calculator) {
+      throw new Error('Operation type or user type not supported');
+    }
+
+    return calculator({ amount, userId, date });
+  }
+
+  calculateCommission(operationsData) {
+    return operationsData.map((item) =>
+      this.calculateCommissionForOperation(item),
+    );
   }
 }
 
